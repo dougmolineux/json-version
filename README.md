@@ -5,3 +5,8 @@ This application uses an API made in Node.js and a Frontend in React. It's main 
 
 https://tools.ietf.org/html/rfc6902
 
+# Screenshots
+
+![screenshot1](https://raw.githubusercontent.com/dougmolineux/json-version/master/screenshot1.png)
+
+![screenshot2](https://raw.githubusercontent.com/dougmolineux/json-version/master/screenshot2.png)
