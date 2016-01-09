@@ -1,0 +1,394 @@
+<html>
+	<head>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.23/browser.js"></script>
+		 <script src="resources/react-0.14.3.js"></script>
+		<script src="resources/react-dom-0.14.3.js"></script> 
+		<script src="resources/jquery.min.js"></script>
+		<script src="resources/react-diff.js"></script>
+	</head>
+	<body style="background-color:#e5f2ff">
+	<div style="margin: 0 auto;width: 60%;">
+		<h1>Control Panel</h1>
+		<div id="controlPanel"></div>
+		
+		<div id="docList"></div>
+		<div id="createDoc"></div>
+		<div id="diff"></div>
+		<div id="deleteDoc"></div>
+
+		<script type="text/babel">
+
+		var apiUrl = "http://localhost:3000/docs";
+
+		var ControlPanel = React.createClass({
+			sectionChanged: function(e) {
+				console.log("panel", e.target.value);
+				if(e.target.value == "createDoc") {
+					ReactDOM.unmountComponentAtNode(document.getElementById('docList'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('diff'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('deleteDoc'));
+					var createDocComp = ReactDOM.render(
+					  <CreateDocument />,
+					  document.getElementById('createDoc')
+					);
+				} else if(e.target.value == "docList") {
+					ReactDOM.unmountComponentAtNode(document.getElementById('createDoc'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('diff'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('deleteDoc'));
+					updateDocList(true, false);
+				} else if(e.target.value == "diff") {
+					ReactDOM.unmountComponentAtNode(document.getElementById('createDoc'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('docList'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('deleteDoc'));
+					updateDocList(false, true);
+				} else if(e.target.value == "deleteDoc") {
+					ReactDOM.unmountComponentAtNode(document.getElementById('createDoc'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('docList'));
+					ReactDOM.unmountComponentAtNode(document.getElementById('diff'));
+					ReactDOM.render(
+					  <DeleteDocument />,
+					  document.getElementById('deleteDoc')
+					);
+				}
+			},
+		    render: function() {
+		    	var sections = [
+		    		{ display: "Show Documents", domId: "docList" }, 
+		    		{ display: "Create New Document", domId: "createDoc"  }, 
+		    		{ display: "Compare Document Revisions", domId: "diff"  },
+		    		{ display: "Delete Document", domId: "deleteDoc"  }
+		    	];
+		    	var self = this;
+		        return (<div>
+		        { sections.map(function(section) {
+		                return <button onClick={self.sectionChanged} value={section.domId}>{section.display}</button>
+		            })
+		        }
+		        </div>);
+		    }
+		});
+
+		ReactDOM.render(
+		  <ControlPanel />,
+		  document.getElementById('controlPanel')
+		);
+
+		var List = React.createClass({
+			getInitialState: function() {
+			    return { data: [], show: { display: "none" } };
+			},
+			componentDidMount: function(){
+				updateDocList(true, false);
+		    },
+		    toggleEdit: function(){
+				this.setState({show: (this.state.show.display != 'none' ? { display: 'none' } : { display: '' }) });
+		    },
+		    render: function() {
+		    	console.log("props", this.props.data);
+		    	var self = this;
+		        return (<div><h1>Document List</h1><button onClick={self.toggleEdit}>Edit Mode Toggle</button> <br />
+		        { this.props.data.map(function(item) {
+		                return <div>{item._id} Revisions - {item.revisions.length} <div style={self.state.show}><EditDocument id={item._id} /></div><br/> <pre>{JSON.stringify(item.doc, null, "\t")}</pre></div>
+		            })
+		        }
+		        </div>);
+		    }
+		});
+
+		function updateDocList(list, diff) {
+			$.ajax({
+				url: apiUrl,
+				success: function(data) {
+					console.log("data", data);
+					if(!list && !diff) {
+						ReactDOM.render(<List data={data.docsFound} />, document.getElementById("docList"));
+						data.docsFound.unshift({})
+				  		ReactDOM.render(<App selectBox={data.docsFound} />, document.getElementById('diff'));
+			  		} else if(list) {
+			  			ReactDOM.render(<List data={data.docsFound} />, document.getElementById("docList"));
+			  		} else if(diff) {
+			  			data.docsFound.unshift({})
+				  		ReactDOM.render(<App selectBox={data.docsFound} />, document.getElementById('diff'));
+			  		}
+		      	},
+		      	error: function(xhr, status, err) {
+		        	console.log("err");
+		      	}
+			});
+		}
+		
+		var EditDocument = React.createClass({
+		  	getInitialState: function() {
+		    	return {};
+		  	},
+		  	componentDidMount: function(event) {
+				var docId = this.props.id;
+				var self = this;
+		    	$.ajax({
+					type: "GET",
+					url: apiUrl+"/"+docId,
+					success: function(response) {
+						console.log("response from get by id", response);
+						if(self.isMounted()) {
+							self.setState({ data: JSON.stringify(response.doc) });
+						}
+					}
+				});
+		  	},
+		  	updateDocument: function(event) {
+				console.log("update attempted", this.props.id);
+				var docId = this.props.id;
+				if(IsJsonString(this.state.data)) {
+					$.ajax({
+						type: "PUT",
+						url: apiUrl+"/"+docId,
+						data: JSON.parse(this.state.data),
+						success: function(response) {
+							console.log("response from Put", response);
+							React.unmountComponentAtNode(document.getElementById('docList'));
+							updateDocList(true, false);
+							// this.props.show = { display: 'none' }
+						},
+						dataType: 'json'
+					});
+				} else {
+					console.error("this.state.data isnt a json", this.state.data)
+				}
+		  	},
+		  	handleChange: function(event) {
+			    this.setState({data: event.target.value});
+			},
+		  	render: function() {
+		  		console.log("rerender", this.props);
+		    	return (
+		    		<div style={this.props.show}>
+		    		<textarea value={this.state.data} onChange={this.handleChange} style={{width: "300px", height: "150px"}}></textarea><br />
+		    		<button onClick={this.updateDocument}>Update Document</button>
+		    		</div>
+		    	);
+		  	}
+		});
+
+		function IsJsonString(str) {
+		    try {
+		        JSON.parse(str);
+		    } catch (e) {
+		        return false;
+		    }
+		    return true;
+		}
+
+		var DeleteDocument = React.createClass({
+			getInitialState: function() {
+			    return { docSelect: [], selectedDoc: JSON.stringify({ "Document Selected" : "none"}), fullSelectObj: {}};
+			},
+			componentDidMount: function(event) {
+				var docId = this.props.id;
+				var self = this;
+		    	$.ajax({
+					type: "GET",
+					url: apiUrl,
+					success: function(response) {
+						console.log("response from get", response);
+						response.docsFound.unshift({})
+						self.setState({ docSelect: response.docsFound })
+					}
+				});
+		  	},
+			deleteDoc: function(event) {
+				console.log("this.state.fullSelectObj", this.state.fullSelectObj)
+				var docId = this.state.fullSelectObj._id;
+				$.ajax({
+					type: "DELETE",
+					url: apiUrl+"/"+docId,
+					success: function(response) {
+						console.log("response from delete", response);
+						React.unmountComponentAtNode(document.getElementById('deleteDoc'));
+						updateDocList(true, false);
+					}
+				});
+			},
+			changedDoc: function(e) {
+				var docId = e.target.value;
+				var self = this;
+				$.ajax({
+					type: "GET",
+					url: apiUrl+"/"+docId,
+					success: function(response) {
+						console.log("response from changed doc", response);
+						if(self.isMounted()) {
+							self.setState({ selectedDoc: JSON.stringify(response.doc) });
+							self.setState({ fullSelectObj: response });
+						}
+					}
+				});
+			},
+			render: function() {
+				console.log("this.state.selectedDoc", this.state.selectedDoc)
+				return (
+					<div>
+					<h1>Delete Document</h1>
+					<select onChange={this.changedDoc}>{ 
+				    	this.state.docSelect.map(function(item,idx) {
+				        return <option value={item._id}>{item._id}</option>
+				    	})}
+					</select>
+					<div>
+					<pre>{this.state.selectedDoc.toString()}</pre>
+					</div>
+					<div>
+					<button onClick={this.deleteDoc}>Delete Document</button></div>
+					</div>
+				);
+			}
+		});
+
+		var CreateDocument = React.createClass({
+		  getInitialState: function() {
+		    return {};
+		  },
+		  createDocument: function(event) {
+			if(IsJsonString(this.refs.doc.value)) {
+			    $.ajax({
+					type: "POST",
+					url: apiUrl,
+					data: JSON.parse(this.refs.doc.value),
+					success: function(response) {
+						console.log("response from Post", response);
+						React.unmountComponentAtNode(document.getElementById('createDoc'));
+						updateDocList(true, false);
+					},
+					dataType: 'json'
+				});
+			} else {
+				console.error("this.refs.doc.value isnt a json", this.refs.doc.value)
+			}
+		  },
+		  render: function() {
+		    return (
+		    	<div>
+		    	<h1>Create Document</h1>
+		    	<textarea ref="doc" style={{width: "300px", height: "150px"}}></textarea><br />
+		    	<button onClick={this.createDocument}>Create Document</button>
+		    	</div>
+		    );
+		  }
+		});
+
+		var App = React.createClass({
+		    getInitialState: function() {
+		      return {
+		        inputA: '',
+		        inputB: '',
+		        type: 'json',
+		        revisions: []
+		      };
+		    },
+		    changedDoc: function(e) {
+		    	console.log("changedDoc", e.target.value);
+		    	var self = this;
+		    	// find the this.props.selectBox with an id of this.props.selectBox
+		    	this.props.selectBox.forEach(function(doc) {
+		    		if(doc._id === e.target.value) {
+		    			self.setState({ inputA : JSON.stringify(doc.doc, null, "\t")});
+		    			self.setState({ inputB : JSON.stringify(doc.doc, null, "\t")});
+		    			self.setState({ revisions : doc.revisions });
+		    			self.setState({ currentDoc: doc });
+		    			self.setState({ leftSelectVal: doc.revisions.length });
+		    			self.setState({ rightSelectVal: doc.revisions.length });
+		    		}
+		    	});
+		    },
+		    changedLeft: function(e) {
+		    	console.log("changedLeft", e.target.value);
+		    	this.setState({ leftSelectVal: e.target.value });
+		    	var version = e.target.value;
+		    	var self = this;
+		    	$.ajax({
+					url: apiUrl+"/"+this.state.currentDoc._id+"/"+version,
+					success: function(data) {
+						console.log("left data", data);
+						self.setState({ inputA : JSON.stringify(data.doc, null, "\t")});	
+			      	},
+			      	error: function(xhr, status, err) {
+			        	console.log("err");
+			      	}
+				});
+		    },
+		   	changedRight: function(e) {
+		   		console.log("changedRight", e.target.value);
+		   		this.setState({ rightSelectVal: e.target.value });
+		   		var version = e.target.value;
+		    	var self = this;
+		    	$.ajax({
+					url: apiUrl+"/"+this.state.currentDoc._id+"/"+version,
+					success: function(data) {
+						console.log("left data", data);
+						self.setState({ inputB : JSON.stringify(data.doc, null, "\t")});	
+			      	},
+			      	error: function(xhr, status, err) {
+			        	console.log("err");
+			      	}
+				});
+		   	},
+		   	getVersionedDoc: function(input, version) {
+		    	var self = this;
+		    	$.ajax({
+					url: apiUrl+"/"+this.state.currentDoc._id+"/"+version,
+					success: function(data) {
+						console.log("left data", data);
+						self.setState({ input : JSON.stringify(data.doc, null, "\t")});	
+			      	},
+			      	error: function(xhr, status, err) {
+			        	console.log("err");
+			      	}
+				});
+		   	},
+		    render: function () {
+		    	console.log("this.props.selectBox", this.props.selectBox)
+		    	var self = this;
+		    	var revLength = self.state.revisions.length-1;
+		      	return (
+		        <div>
+		          <h1>Compare Document Revisions</h1>
+		          <div>
+		            Document: <select onChange={this.changedDoc}>
+		            { this.props.selectBox.map(function(item) {
+		                return <option value={item._id}>{item._id}</option>
+		            })
+		        	}</select> 
+		            Left Revision: <select onChange={this.changedLeft} value={this.state.leftSelectVal}>{ 
+		            	this.state.revisions.map(function(item,idx) {
+		                return <option value={revLength-idx}>{revLength-idx}</option>
+		            	})}
+		            	<option value="original">original</option>
+		        	</select>
+		            Right Revision: <select onChange={this.changedRight} value={this.state.rightSelectVal}>{ 
+		            	this.state.revisions.map(function(item,idx) {
+		                return <option value={revLength-idx}>{revLength-idx}</option>
+		            })
+		        	}<option value="original">original</option></select><br/>
+		            <textarea style={{width: "300px", height: "150px"}} value={this.state.inputA} onChange={this.onInputAChange} />
+		            <textarea style={{width: "300px", height: "150px"}} value={this.state.inputB} onChange={this.onInputBChange} />
+		          </div>
+		          <div>
+		            <Diff inputA={this.state.inputA} inputB={this.state.inputB} type={this.state.type} />
+		          </div>
+		        </div>
+		      );
+		    },
+		    onInputAChange: function(e) {
+		      this.setState({inputA: e.target.value});
+		    },
+		    onInputBChange: function(e) {
+		      this.setState({inputB: e.target.value});
+		    },
+		    onInputTypeChange: function(e) {
+		      this.setState({type: e.target.value});
+		    }
+		});
+
+		</script>
+	</div>
+	</body>
+</html>
